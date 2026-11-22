@@ -9,7 +9,8 @@ import { Button, Callout, designTokens, Tag } from '@rescue-frontend/ui';
 import { Building2, ChevronRight, MapPinOff, X } from 'lucide-react';
 import type { Map as LeafletMap } from 'leaflet';
 import { useEffect, useRef, useState, type RefObject } from 'react';
-import { useDebounceCallback, useEventCallback } from 'usehooks-ts';
+import { useEventCallback } from 'usehooks-ts';
+import { useMapViewport } from '@rescue-frontend/leaflet';
 import { createStore, useStore } from 'zustand';
 
 import { Muted } from '../../../admin/shared/muted';
@@ -131,7 +132,9 @@ export function TicketMapView({
     arrivedWithNewFilters,
   });
   // The first load waits for the first framing, so it is of the framed view and not the default.
-  const viewport = useMapViewport(framing.ready ? leafletMap : null);
+  const viewport = useMapViewport(framing.ready ? leafletMap : null, {
+    settleMs: VIEWPORT_DEBOUNCE_MS,
+  });
   const variables = viewport ? toMapVariables(filters, viewport, cutAt) : {};
   const tickets = useTicketPins(variables, { enabled: viewport !== null });
   const rows = tickets.pins;
@@ -436,37 +439,6 @@ function useSettledSince(
     setMovedFrom({ framed, viewport });
   }
   return movedFrom.framed === framed && viewport !== movedFrom.viewport;
-}
-
-/** The area the map shows, settled after each move; null until the map is built. */
-function useMapViewport(map: LeafletMap | null): MapViewport | null {
-  const [store] = useState(() => createStore<MapViewport | null>(() => null));
-  const viewport = useStore(store);
-  const settle = useDebounceCallback(
-    (next: MapViewport) => store.setState(next, true),
-    VIEWPORT_DEBOUNCE_MS,
-  );
-  useEffect(() => {
-    if (!map) return undefined;
-    const read = (): MapViewport => {
-      const bounds = map.getBounds();
-      return {
-        west: bounds.getWest(),
-        south: bounds.getSouth(),
-        east: bounds.getEast(),
-        north: bounds.getNorth(),
-        zoom: map.getZoom(),
-      };
-    };
-    const onMoveEnd = () => settle(read());
-    store.setState(read(), true);
-    map.on('moveend', onMoveEnd);
-    return () => {
-      settle.cancel();
-      map.off('moveend', onMoveEnd);
-    };
-  }, [map, settle, store]);
-  return viewport;
 }
 
 /**
