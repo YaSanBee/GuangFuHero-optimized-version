@@ -1,8 +1,8 @@
 """SQLAlchemy model for site-wide announcements."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
-from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Text, text
+from sqlalchemy import Boolean, CheckConstraint, DateTime, ForeignKey, Index, Text, text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, TimestampMixin, UUIDPKMixin
@@ -20,16 +20,21 @@ class Announcement(Base, UUIDPKMixin, TimestampMixin):
 
     __tablename__ = "announcements"
     __table_args__ = (
+        CheckConstraint(
+            "severity IN ('general', 'important', 'emergency')", name="ck_announcements_severity"
+        ),
         # One index per page, so a live "all" row counts on both. Every row an index covers has
         # active = true, so being unique on it admits one row. A placement outside the three is
         # read as admin_page (ADR-309), so it takes the admin page here too.
         Index(
-            "uq_announcements_live_public_page", "active",
+            "uq_announcements_live_public_page",
+            "active",
             unique=True,
             postgresql_where=text("active AND delete_at IS NULL AND placement IN ('public_page', 'all')"),
         ),
         Index(
-            "uq_announcements_live_admin_page", "active",
+            "uq_announcements_live_admin_page",
+            "active",
             unique=True,
             postgresql_where=text("active AND delete_at IS NULL AND placement <> 'public_page'"),
         ),
@@ -38,9 +43,16 @@ class Announcement(Base, UUIDPKMixin, TimestampMixin):
     active: Mapped[bool] = mapped_column(Boolean, server_default=text("false"), default=False)
     # Which page shows it: "admin_page", "public_page" or "all" (both).
     placement: Mapped[str] = mapped_column(Text, server_default=text("'all'"), default="all")
+    severity: Mapped[str] = mapped_column(Text, server_default=text("'important'"), default="important")
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_by: Mapped[str] = mapped_column(ForeignKey("users.uuid"))
     # Every write names it; NULL only once that account is gone, as a mock one is after a
     # SEED_MOCK run (ADR-393).
     updated_by: Mapped[str | None] = mapped_column(ForeignKey("users.uuid"), nullable=True)
     published_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     published_by: Mapped[str | None] = mapped_column(ForeignKey("users.uuid"), nullable=True)
+
+    @property
+    def is_live(self) -> bool:
+        """Whether this announcement is still within its published lifetime."""
+        return self.active and (self.expires_at is None or self.expires_at > datetime.now(UTC))

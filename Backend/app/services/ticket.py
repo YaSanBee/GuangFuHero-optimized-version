@@ -1494,7 +1494,7 @@ async def unassign_task_actor(db: AsyncSession, *, actor: User, uuid: str) -> No
 
 
 async def update_task_assignment(
-    db: AsyncSession, *, actor: User, uuid: str, changes: dict
+    db: AsyncSession, *, actor: User, uuid: str, changes: dict, expected_status: str | None = None
 ) -> TaskAssignment:
     """Update a task assignment's status/role. Assignee updates own (=own), coordinator any (=all).
 
@@ -1503,7 +1503,7 @@ async def update_task_assignment(
     claim or a stop; giving the place back still works (unassign_task_actor). Checked after
     authorization, so a caller who may not change the claim cannot tell whether it was deleted.
     """
-    assignment = await task_assignment_repository.get_by_uuid(db, uuid)
+    assignment = await db.scalar(select(TaskAssignment).where(TaskAssignment.uuid == uuid).with_for_update())
     if not assignment:
         raise ValueError("Task assignment not found")
     await require_scope(
@@ -1512,4 +1512,6 @@ async def update_task_assignment(
     task = await ticket_task_repository.get_by_uuid_active(db, assignment.task_uuid)
     if not task or not await ticket_repository.get_by_uuid_active(db, task.ticket_uuid):
         raise ValueError("Ticket task not found")
+    if expected_status is not None and assignment.status not in (expected_status, changes.get("status")):
+        raise ValueError("Assignment progress changed; reload and try again")
     return await task_assignment_repository.update(db, db_obj=assignment, obj_in=changes)

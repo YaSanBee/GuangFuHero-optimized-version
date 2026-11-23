@@ -36,7 +36,7 @@ FastAPI + Strawberry GraphQL + SQLAlchemy（async、asyncpg）+ PostgreSQL（Pos
 
 ## 快速開始
 
-你可以直接在**專案根目錄**執行 `pnpm setup` 一鍵完成所有設定；若只想單獨操作後端，請在 `Backend/` 目錄執行：
+你可以直接在**專案根目錄**執行 `pnpm run setup` 一鍵完成所有設定；若只想單獨操作後端，請在 `Backend/` 目錄執行：
 
 ```bash
 cd Backend

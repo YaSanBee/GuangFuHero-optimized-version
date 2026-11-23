@@ -151,6 +151,8 @@ class TaskAssignmentStatus(enum.Enum):
 
     accepted = "accepted"
     en_route = "en_route"
+    on_site = "on_site"
+    in_progress = "in_progress"
     completed = "completed"
 
 
@@ -599,6 +601,18 @@ class TicketTaskType:
         return sum(1 for a in rows if a.status == "completed")
 
     @strawberry.field
+    async def on_site_count(self, info: strawberry.types.Info) -> int:
+        """Number of assignments reporting arrival while waiting to begin work."""
+        rows = await info.context["loaders"]["task_assignments_by_task"].load(str(self.uuid))
+        return sum(1 for assignment in rows if assignment.status == "on_site")
+
+    @strawberry.field
+    async def working_count(self, info: strawberry.types.Info) -> int:
+        """Number of assignments reporting work in progress."""
+        rows = await info.context["loaders"]["task_assignments_by_task"].load(str(self.uuid))
+        return sum(1 for assignment in rows if assignment.status == "in_progress")
+
+    @strawberry.field
     async def progress(self, info: strawberry.types.Info) -> float | None:
         """Work-completion ratio (0.0-1.0): completed assignments / quantity needed.
 
@@ -765,6 +779,10 @@ class UpdateTaskAssignmentInput:
     status: TaskAssignmentStatus | None = strawberry.field(
         default=None,
         description="New work-completion state",
+    )
+    expected_status: TaskAssignmentStatus | None = strawberry.field(
+        default=None,
+        description="Reject a progress update if another report already changed the status",
     )
     role: str | None = strawberry.field(
         default=strawberry.UNSET,

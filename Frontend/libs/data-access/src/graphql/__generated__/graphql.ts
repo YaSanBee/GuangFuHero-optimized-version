@@ -103,6 +103,14 @@ export const AnnouncementPlacement = {
 
 export type AnnouncementPlacement =
   (typeof AnnouncementPlacement)[keyof typeof AnnouncementPlacement];
+export const AnnouncementSeverity = {
+  Emergency: 'emergency',
+  General: 'general',
+  Important: 'important',
+} as const;
+
+export type AnnouncementSeverity =
+  (typeof AnnouncementSeverity)[keyof typeof AnnouncementSeverity];
 export const AnnouncementStatus = {
   Active: 'ACTIVE',
   Draft: 'DRAFT',
@@ -118,12 +126,14 @@ export type AnnouncementType = {
   createdAt?: Maybe<Scalars['DateTime']['output']>;
   /** Who created it. Null unless the caller holds announcement.edit */
   creator?: Maybe<UserRefType>;
+  expiresAt?: Maybe<Scalars['DateTime']['output']>;
   /** admin_page, public_page, or all (both pages) */
   placement: Scalars['String']['output'];
   /** When it last went live; null while a draft */
   publishedAt?: Maybe<Scalars['DateTime']['output']>;
   /** Who last activated it; null while a draft or unless the caller holds announcement.edit */
   publisher?: Maybe<UserRefType>;
+  severity: AnnouncementSeverity;
   status: AnnouncementStatus;
   updatedAt?: Maybe<Scalars['DateTime']['output']>;
   /** Who last changed it. Null unless the caller holds announcement.edit */
@@ -299,8 +309,10 @@ export type BuildingMapType = {
 export type CreateAnnouncementInput = {
   /** The announcement body text */
   content: Scalars['String']['input'];
+  expiresAt?: InputMaybe<Scalars['DateTime']['input']>;
   /** Which page shows it; defaults to both */
   placement?: AnnouncementPlacement;
+  severity?: AnnouncementSeverity;
 };
 
 export type CreateAreaInput = {
@@ -1732,6 +1744,8 @@ export const TaskAssignmentStatus = {
   Accepted: 'accepted',
   Completed: 'completed',
   EnRoute: 'en_route',
+  InProgress: 'in_progress',
+  OnSite: 'on_site',
 } as const;
 
 export type TaskAssignmentStatus =
@@ -2016,6 +2030,7 @@ export type TicketTaskType = {
   createdBy?: Maybe<Scalars['String']['output']>;
   /** The caller's own claim on this task. Null to a guest or a non-claimant */
   myAssignment?: Maybe<TaskAssignmentType>;
+  onSiteCount: Scalars['Int']['output'];
   progress?: Maybe<Scalars['Float']['output']>;
   /** Current progress update written by the assignee. Null to a caller without ticket.view_detail on the parent ticket */
   progressNote?: Maybe<Scalars['String']['output']>;
@@ -2040,6 +2055,7 @@ export type TicketTaskType = {
   uuid: Scalars['UUID']['output'];
   /** Whether the caller holds ticket.assign over this need as assigning someone else to it is checked, so a page offers 指派承接 only where it would be allowed: `own` is the need's creator, `zone` its ticket in the caller's team zones. Room on the need is not part of it */
   viewerCanAssign: Scalars['Boolean']['output'];
+  workingCount: Scalars['Int']['output'];
 };
 
 export type TicketType = {
@@ -2154,8 +2170,10 @@ export type TriState = (typeof TriState)[keyof typeof TriState];
 export type UpdateAnnouncementInput = {
   /** The new announcement body text */
   content: Scalars['String']['input'];
+  expiresAt?: InputMaybe<Scalars['DateTime']['input']>;
   /** Which page shows it; omit to keep the current placement */
   placement?: InputMaybe<AnnouncementPlacement>;
+  severity?: InputMaybe<AnnouncementSeverity>;
 };
 
 export type UpdateAreaInput = {
@@ -2223,6 +2241,8 @@ export type UpdateStationPropertyInput = {
 };
 
 export type UpdateTaskAssignmentInput = {
+  /** Reject a progress update if another report already changed the status */
+  expectedStatus?: InputMaybe<TaskAssignmentStatus>;
   /** Updated role, e.g. 'lead' or 'support' — pass null to clear */
   role?: InputMaybe<Scalars['String']['input']>;
   /** New work-completion state */
@@ -3021,6 +3041,8 @@ export type AdminAnnouncementsQuery = {
     content: string;
     active: boolean;
     placement: string;
+    severity: AnnouncementSeverity;
+    expiresAt?: string | null;
     publishedAt?: string | null;
     createdAt?: string | null;
     updatedAt?: string | null;
@@ -4466,6 +4488,7 @@ export type SiteAnnouncementsQuery = {
     uuid: string;
     content: string;
     publishedAt?: string | null;
+    expiresAt?: string | null;
   }>;
 };
 
@@ -5390,6 +5413,7 @@ export type MyTaskAssignmentsQuery = {
       __typename?: 'TaskAssignmentType';
       uuid: string;
       assignedAt?: string | null;
+      status: string;
     };
     task: {
       __typename?: 'TicketTaskType';
@@ -5423,6 +5447,20 @@ export type MyTaskAssignmentsQuery = {
       } | null;
     };
   }>;
+};
+
+export type ReportAssignmentProgressMutationVariables = Exact<{
+  uuid: Scalars['UUID']['input'];
+  input: UpdateTaskAssignmentInput;
+}>;
+
+export type ReportAssignmentProgressMutation = {
+  __typename?: 'Mutation';
+  updateTaskAssignment: {
+    __typename?: 'TaskAssignmentType';
+    uuid: string;
+    status: string;
+  };
 };
 
 export type MyTicketsQueryVariables = Exact<{ [key: string]: never }>;
@@ -6341,6 +6379,8 @@ export const AdminAnnouncementsDocument = new TypedDocumentString(`
     content
     active
     placement
+    severity
+    expiresAt
     publishedAt
     publisher {
       uuid
@@ -7593,6 +7633,7 @@ export const SiteAnnouncementsDocument = new TypedDocumentString(`
     uuid
     content
     publishedAt
+    expiresAt
   }
 }
     `) as unknown as TypedDocumentString<
@@ -8401,6 +8442,7 @@ export const MyTaskAssignmentsDocument = new TypedDocumentString(`
     assignment {
       uuid
       assignedAt
+      status
     }
     task {
       uuid
@@ -8435,6 +8477,17 @@ export const MyTaskAssignmentsDocument = new TypedDocumentString(`
     `) as unknown as TypedDocumentString<
   MyTaskAssignmentsQuery,
   MyTaskAssignmentsQueryVariables
+>;
+export const ReportAssignmentProgressDocument = new TypedDocumentString(`
+    mutation ReportAssignmentProgress($uuid: UUID!, $input: UpdateTaskAssignmentInput!) {
+  updateTaskAssignment(uuid: $uuid, input: $input) {
+    uuid
+    status
+  }
+}
+    `) as unknown as TypedDocumentString<
+  ReportAssignmentProgressMutation,
+  ReportAssignmentProgressMutationVariables
 >;
 export const MyTicketsDocument = new TypedDocumentString(`
     query MyTickets {

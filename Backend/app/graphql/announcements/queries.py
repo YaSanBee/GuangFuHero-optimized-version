@@ -49,6 +49,6 @@ class AnnouncementQuery:
         m = await announcement_repository.get_by_uuid_active(info.context["db"], uuid)
         if m and m.placement not in ("public_page", "all"):
             await check_permission(info, Perm.ANN_VIEW_ADMIN)
-        if m and not m.active:
+        if m and not m.is_live:
             await check_permission(info, Perm.ANN_EDIT)
         return AnnouncementType.from_model(m) if m else None

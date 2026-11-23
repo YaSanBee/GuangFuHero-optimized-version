@@ -305,6 +305,7 @@ query MyTaskAssignments {
     assignment {
       uuid
       assignedAt
+      status
     }
     task {
       uuid
@@ -334,6 +335,13 @@ query MyTaskAssignments {
         landmarkNote
       }
     }
+  }
+}
+
+mutation ReportAssignmentProgress($uuid: UUID!, $input: UpdateTaskAssignmentInput!) {
+  updateTaskAssignment(uuid: $uuid, input: $input) {
+    uuid
+    status
   }
 }
 

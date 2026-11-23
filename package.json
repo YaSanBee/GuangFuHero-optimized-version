@@ -2,8 +2,8 @@
   "name": "guangfu-hero",
   "private": true,
   "scripts": {
-    "setup": "test -f Backend/.env || cp Backend/.env.example Backend/.env; test -f Frontend/.env || cp Frontend/.env.example Frontend/.env; (cd Frontend && corepack pnpm install) && uv --directory Backend sync && docker compose --project-directory Backend up -d --wait && docker compose --project-directory Backend exec -T backend alembic upgrade head && docker compose --project-directory Backend exec -T backend python -m scripts.seed_rbac && docker compose --project-directory Backend exec -T db psql -U postgres -d postgres -v ON_ERROR_STOP=1 < Backend/scripts/seed_mock_scenarios.sql",
-    "dev": "docker compose --project-directory Backend up -d && (cd Frontend && corepack pnpm run dev)",
-    "test": "pnpm --dir Frontend test && docker compose --project-directory Backend up -d --wait db redis && uv --directory Backend run pytest -n 4"
+    "setup": "node scripts/local.mjs setup",
+    "dev": "node scripts/local.mjs dev",
+    "test": "node scripts/local.mjs test"
   }
 }

@@ -5,12 +5,16 @@ on:
     paths:
       - "Frontend/**"
       - "Backend/**"
+      - "package.json"
+      - "scripts/local.mjs"
       - ".github/workflows/frontend-ci.yaml"
   push:
     branches: [main]
     paths:
       - "Frontend/**"
       - "Backend/**"
+      - "package.json"
+      - "scripts/local.mjs"
       - ".github/workflows/frontend-ci.yaml"
   workflow_dispatch:
 
@@ -43,3 +47,30 @@ jobs:
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
+      - run: pnpm build:demo
+      - run: pnpm build:admin
+      - name: Check the production login routes
+        shell: bash
+        run: |
+          pnpm --filter @rescue-frontend/demo exec next start --port 3000 & demo=$!
+          pnpm --filter @rescue-frontend/admin exec next start --port 3001 & admin=$!
+          trap 'kill "$demo" "$admin" 2>/dev/null || true' EXIT
+          for port in 3000 3001; do
+            curl --retry 30 --retry-connrefused --retry-delay 1 --fail --silent --show-error \
+              "http://localhost:$port/login" -o /dev/null
+          done
+
+  windows-setup:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: astral-sh/setup-uv@v6
+        with:
+          version: "0.13.7"
+          python-version: "3.13"
+      - run: node --check scripts/local.mjs
+      - run: uv --directory Backend sync --locked
+      - run: uv --directory Backend run --no-sync python -c "from zoneinfo import ZoneInfo; print(ZoneInfo('Asia/Taipei'))"

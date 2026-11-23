@@ -85,7 +85,7 @@
 | **Docker Desktop**（Linux 裝 Docker Engine 與 Compose 外掛即可） | 最新穩定版 | 執行 PostgreSQL（PostGIS + H3）、Redis 與 FastAPI 後端開發容器 |
 | **Node.js** | `>= 22` | 執行前端 Next.js 與 Nx 工具鏈 |
 | **pnpm** | `corepack enable` 自動啟用 | 管理前端 monorepo 與根目錄啟動指令 |
-| **Python + `uv`** | Python `3.13` | `pnpm setup` 會用它建立後端虛擬環境，所以第一次就要裝；在本機跑後端 `pytest`、或執行 `pnpm schemas:generate` 匯出型別時也會用到 |
+| **Python + `uv`** | Python `3.13` | `pnpm run setup` 會用它建立後端虛擬環境；本機跑 `pytest` 或匯出前端型別也會用到 |
 
 ### 2. 一鍵初始化與日常啟動
 
@@ -96,12 +96,22 @@
 # 自動複製前後端環境變數檔（Backend/.env 與 Frontend/.env）、
 # 安裝前端套件、建立後端虛擬環境、啟動後端 Docker、執行 Alembic migration 並灌入 RBAC 與測試假資料
 corepack enable
-pnpm setup
+pnpm run setup
 
 # 日常開發：
 # 確保後端 Docker（db, redis, backend）在背景運行，並同時啟動前台 demo、後台 admin 與 Storybook
-pnpm dev
+pnpm run dev
 ```
+
+Windows 可以在已啟用 Python 3.13 環境的終端機執行同一組指令。使用 Anaconda 時，先開啟 Anaconda Prompt 或啟用 `Base_313` 的捷徑，再用 `cd /d` 切換到專案根目錄。`Base_313` 是本機自訂的環境名稱，也可以啟用其他裝有 Python 3.13 與 `uv` 的環境。
+
+```cmd
+conda activate Base_313
+cd /d <專案根目錄>
+pnpm run dev
+```
+
+首次設定時先執行 `pnpm run setup`。它會啟動 Docker 服務、執行 migration 並載入測試資料。一般啟動直接執行 `pnpm run dev` 即可。
 
 啟動後的本機服務一覽：
 
@@ -117,13 +127,13 @@ pnpm dev
 > `Backend/docker-compose.yml` 已將本機 `Backend/` 目錄掛載進 `backend` 容器並開啟 `uvicorn --reload`。直接修改本機的 `.py` 檔案，Docker 內的後端就會自動重新載入，不需重啟容器。
 >
 > 💡 **環境變數檔**：
-> 前後端統一使用 `.env`（`Backend/.env` 與 `Frontend/.env`），執行 `pnpm setup` 時會自動從各自的 `.env.example` 複製產生。
+> 前後端統一使用 `.env`（`Backend/.env` 與 `Frontend/.env`），執行 `pnpm run setup` 時會用各自的 `.env.example` 補上缺少的檔案。
 
 ---
 
 ## 本機測試帳號與驗證碼查看
 
-執行 `pnpm setup` 後，資料庫會載入兩個災害情境（`scripts/seed_mock_scenarios.sql`）的完整測試資料：
+執行 `pnpm run setup` 後，資料庫會載入兩個災害情境（`scripts/seed_mock_scenarios.sql`）的完整測試資料：
 
 | 帳號（Email） | 角色 / 身分 | 預設密碼 | 用途說明 |
 | :--- | :--- | :--- | :--- |

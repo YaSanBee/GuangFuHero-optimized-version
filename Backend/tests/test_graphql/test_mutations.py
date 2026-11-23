@@ -1481,15 +1481,18 @@ async def test_assignee_updates_own_status(
     body = await _assign(client, token, sample_ticket_task)
     a_uuid = body["data"]["assignTaskActor"]["uuid"]
 
-    resp = await client.post(
-        "/graphql",
-        json={
-            "query": UPDATE_TASK_ASSIGNMENT,
-            "variables": {"uuid": a_uuid, "input": {"status": "completed"}},
-        },
-        headers=auth_header(token),
-    )
-    assert resp.json()["data"]["updateTaskAssignment"]["status"] == "completed"
+    for status in ("en_route", "on_site", "in_progress", "completed"):
+        resp = await client.post(
+            "/graphql",
+            json={
+                "query": UPDATE_TASK_ASSIGNMENT,
+                "variables": {"uuid": a_uuid, "input": {"status": status}},
+            },
+            headers=auth_header(token),
+        )
+        updated = resp.json()
+        assert "errors" not in updated, updated
+        assert updated["data"]["updateTaskAssignment"]["status"] == status
 
 
 @pytest.mark.asyncio

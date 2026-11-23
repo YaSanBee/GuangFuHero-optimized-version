@@ -1431,9 +1431,28 @@ export function RescueMapCanvas({
       maxNativeZoom: nextTileLayer.maxNativeZoom,
     });
 
+    const start = performance.now();
+    const layer = controller.baseLayer;
+    let loaded = 0;
+    let failed = 0;
+    const countLoaded = () => {
+      if (++loaded === 1)
+        performance.measure('map:first-tile', { start, detail: { layer } });
+    };
+    const countFailed = () => {
+      failed += 1;
+    };
+    tileLayer.on('tileload', countLoaded).on('tileerror', countFailed);
+    tileLayer.once('load', () => {
+      performance.measure('map:initial-tiles', {
+        start,
+        detail: { layer, loaded, failed },
+      });
+      tileLayer.off('tileload', countLoaded).off('tileerror', countFailed);
+    });
     tileLayer.addTo(map);
     tileLayerRef.current = tileLayer;
-  }, [controller.tileLayer]);
+  }, [controller.tileLayer, controller.baseLayer]);
 
   useEffect(() => {
     const map = mapRef.current;

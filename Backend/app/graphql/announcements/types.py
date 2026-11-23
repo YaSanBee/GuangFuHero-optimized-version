@@ -1,6 +1,6 @@
 """GraphQL types, inputs, and enums for announcements."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from uuid import UUID
 
@@ -37,6 +37,22 @@ class AnnouncementPlacement(Enum):
     all = "all"
 
 
+@strawberry.enum
+class AnnouncementSeverity(Enum):
+    """Urgency of an announcement."""
+
+    general = "general"
+    important = "important"
+    emergency = "emergency"
+
+
+def validate_expiry(expires_at: datetime | None) -> datetime | None:
+    """Accept an optional absolute expiration time in the future."""
+    if expires_at is not None and (expires_at.utcoffset() is None or expires_at <= datetime.now(UTC)):
+        raise ValueError("Announcement expiry must be a future time with a time zone")
+    return expires_at
+
+
 @strawberry.type
 class AnnouncementType:
     """GraphQL type representing a site-wide announcement."""
@@ -45,6 +61,8 @@ class AnnouncementType:
     content: str
     active: bool
     placement: str = strawberry.field(description="admin_page, public_page, or all (both pages)")
+    severity: AnnouncementSeverity
+    expires_at: datetime | None
     status: AnnouncementStatus = AnnouncementStatus.ACTIVE
     published_at: datetime | None = strawberry.field(
         default=None, description="When it last went live; null while a draft"
@@ -75,18 +93,21 @@ class AnnouncementType:
     @classmethod
     def from_model(cls, m) -> "AnnouncementType":
         """Build from a SQLAlchemy model instance."""
+        active = m.is_live
         status = (
             AnnouncementStatus.DRAFT
             if m.published_at is None
             else AnnouncementStatus.ACTIVE
-            if m.active
+            if active
             else AnnouncementStatus.INACTIVE
         )
         return cls(
             uuid=m.uuid,
             content=m.content,
-            active=m.active,
+            active=active,
             placement=m.placement,
+            severity=AnnouncementSeverity(m.severity),
+            expires_at=m.expires_at,
             _created_by=m.created_by,
             status=status,
             published_at=m.published_at,
@@ -105,6 +126,8 @@ class CreateAnnouncementInput:
     placement: AnnouncementPlacement = strawberry.field(
         default=AnnouncementPlacement.all, description="Which page shows it; defaults to both"
     )
+    severity: AnnouncementSeverity = AnnouncementSeverity.important
+    expires_at: datetime | None = None
 
 
 @strawberry.input
@@ -115,3 +138,5 @@ class UpdateAnnouncementInput:
     placement: AnnouncementPlacement | None = strawberry.field(
         default=None, description="Which page shows it; omit to keep the current placement"
     )
+    severity: AnnouncementSeverity | None = None
+    expires_at: datetime | None = strawberry.UNSET

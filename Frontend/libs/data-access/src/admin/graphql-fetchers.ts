@@ -446,6 +446,7 @@ export function useAnnouncements(
   return useQuery({
     ...announcementsQuery(variables),
     enabled: options.enabled,
+    refetchInterval: 30_000,
   });
 }
 

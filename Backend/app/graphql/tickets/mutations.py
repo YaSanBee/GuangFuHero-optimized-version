@@ -450,7 +450,11 @@ class TicketTaskMutation:
             changes["role"] = input.role
 
         assignment = await ticket_service.update_task_assignment(
-            info.context["db"], actor=require_authenticated(info), uuid=str(uuid), changes=changes
+            info.context["db"],
+            actor=require_authenticated(info),
+            uuid=str(uuid),
+            changes=changes,
+            expected_status=input.expected_status.value if input.expected_status is not None else None,
         )
         return TaskAssignmentType.from_model(assignment)
 

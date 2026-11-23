@@ -16,6 +16,7 @@ import { toast } from 'sonner';
 import {
   AnnouncementFilter,
   AnnouncementPlacement,
+  AnnouncementSeverity,
   useAnnouncements,
   useCreateAnnouncement,
   useCurrentUser,
@@ -31,6 +32,7 @@ import {
   designTokens,
   Dialog,
   EmptyState,
+  NativeSelect,
   SegmentedTabs,
   TextInput,
   Timeline,
@@ -39,9 +41,17 @@ import {
   type TimelineItem,
 } from '@rescue-frontend/ui';
 
+import { useUnexpiredAnnouncements } from '../../announcement/use-unexpired-announcements';
+import { fromTaiwanDateTimeLocal } from '../../time';
+
 const { color, radius, typography } = designTokens;
 
 const MAX_LENGTH = 50;
+const SEVERITY_LABELS = {
+  [AnnouncementSeverity.General]: '一般',
+  [AnnouncementSeverity.Important]: '重要',
+  [AnnouncementSeverity.Emergency]: '緊急',
+};
 
 const TARGETS: Record<
   AnnouncementPlacement,
@@ -105,8 +115,9 @@ export function AnnouncementPage() {
         : AnnouncementFilter.Active,
     placement: AnnouncementPlacement.All,
   });
-  const live =
-    data?.announcements.filter((announcement) => announcement.active) ?? [];
+  const live = useUnexpiredAnnouncements(data?.announcements).filter(
+    (announcement) => announcement.active,
+  );
   const history =
     data?.announcements
       .flatMap((announcement) => {
@@ -269,6 +280,9 @@ function LiveAnnouncement({
         <Badge tone={target.tone} icon={<target.Icon size={12} />}>
           {target.label}
         </Badge>
+        <Box sx={{ ml: 1, ...typography.label[300] }}>
+          {SEVERITY_LABELS[announcement.severity]}
+        </Box>
         <Box
           sx={{
             ml: 'auto',
@@ -294,6 +308,14 @@ function LiveAnnouncement({
             {timelineTimeFormatter.format(new Date(announcement.publishedAt))}
           </time>{' '}
           發布
+        </Box>
+      ) : null}
+      {announcement.expiresAt ? (
+        <Box sx={{ ...typography.data[300], color: color.fg.neutral.muted }}>
+          顯示至{' '}
+          <time dateTime={announcement.expiresAt}>
+            {timelineTimeFormatter.format(new Date(announcement.expiresAt))}
+          </time>
         </Box>
       ) : null}
 
@@ -351,20 +373,33 @@ function PublishAnnouncementDialog({
 }) {
   const initialValues: Required<
     Pick<CreateAnnouncementInput, 'placement' | 'content'>
-  > = { placement: AnnouncementPlacement.PublicPage, content: '' };
+  > & { severity: AnnouncementSeverity; expiry: string } = {
+    placement: AnnouncementPlacement.PublicPage,
+    content: '',
+    severity: AnnouncementSeverity.Important,
+    expiry: '',
+  };
   const form = useForm({
     defaultValues: initialValues,
     onSubmit: (): void => publish(),
   });
-  const { placement, content } = useStore(form.store, (state) => state.values);
+  const { placement, content, severity, expiry } = useStore(
+    form.store,
+    (state) => state.values,
+  );
   const [confirming, setConfirming] = useState(false);
   const create = useCreateAnnouncement();
   const activate = useSetAnnouncementActive();
+  const [validationTime, setValidationTime] = useState(() => Date.now());
   const submitting = create.isPending || activate.isPending;
   const target = TARGETS[placement];
   const text = content.trim();
   const length = [...text].length;
   const over = length > MAX_LENGTH;
+  const expiresAt = fromTaiwanDateTimeLocal(expiry)?.toISOString() ?? null;
+  const invalidExpiry = Boolean(
+    expiry && (!expiresAt || Date.parse(expiresAt) <= validationTime),
+  );
   const replaced = live.filter((announcement) => {
     const currentPlacement = announcementPlacement(announcement.placement);
     return (
@@ -390,7 +425,13 @@ function PublishAnnouncementDialog({
   }
 
   function publish() {
-    if (!text || over || submitting) return;
+    if (!text || over || invalidExpiry || submitting) return;
+    const now = Date.now();
+    if (expiresAt && Date.parse(expiresAt) <= now) {
+      setValidationTime(now);
+      setConfirming(false);
+      return;
+    }
     if (!confirming) {
       setConfirming(true);
       return;
@@ -399,7 +440,7 @@ function PublishAnnouncementDialog({
       activateDraft(create.data.createAnnouncement.uuid);
     } else {
       create.mutate(
-        { input: { content: text, placement } },
+        { input: { content: text, placement, severity, expiresAt } },
         {
           onSuccess: ({ createAnnouncement }) =>
             activateDraft(createAnnouncement.uuid),
@@ -415,7 +456,7 @@ function PublishAnnouncementDialog({
       onClose={onClose}
       onConfirm={() => void form.handleSubmit()}
       confirmLabel={confirming ? '確認發布' : '預覽無誤，發布'}
-      confirmDisabled={!text || over}
+      confirmDisabled={!text || over || invalidExpiry}
       submitting={submitting}
     >
       <ToggleButtonGroup
@@ -469,6 +510,38 @@ function PublishAnnouncementDialog({
       >
         {target.audience}
       </Callout>
+
+      <Stack spacing={1}>
+        <Box component="label" htmlFor="announcement-severity">
+          公告等級
+        </Box>
+        <NativeSelect
+          id="announcement-severity"
+          options={Object.entries(SEVERITY_LABELS)}
+          value={severity}
+          fullWidth
+          disabled={submitting || create.isSuccess}
+          onChange={(event) => {
+            form.setFieldValue(
+              'severity',
+              event.target.value as AnnouncementSeverity,
+            );
+            setConfirming(false);
+          }}
+        />
+        <TextInput
+          label="下架時間（台灣時間，選填）"
+          type="datetime-local"
+          value={expiry}
+          disabled={submitting || create.isSuccess}
+          error={invalidExpiry ? '請選擇未來的下架時間。' : undefined}
+          onChange={(event) => {
+            setValidationTime(Date.now());
+            form.setFieldValue('expiry', event.target.value);
+            setConfirming(false);
+          }}
+        />
+      </Stack>
 
       {replaced.length > 0 ? (
         <Stack

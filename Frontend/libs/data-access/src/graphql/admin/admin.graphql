@@ -452,6 +452,8 @@ query AdminAnnouncements(
     content
     active
     placement
+    severity
+    expiresAt
     publishedAt
     publisher {
       uuid

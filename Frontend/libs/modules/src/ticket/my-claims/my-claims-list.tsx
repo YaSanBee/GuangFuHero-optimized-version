@@ -8,10 +8,13 @@ import { useState } from 'react';
 
 import {
   ReleaseClaimDocument,
+  ReportAssignmentProgressDocument,
   type GraphqlError,
   type MyTaskAssignmentsQuery,
 } from '@rescue-frontend/data-access';
 import {
+  Button,
+  Callout,
   designTokens,
   displayTextSize,
   RowAction,
@@ -24,6 +27,7 @@ import { siteGraphqlMutation } from '../../session/site-clients';
 import { releaseErrorMessage } from '../needs/claim-error';
 import { announceTicketChanged } from '../ticket-changes';
 import {
+  assignmentProgress,
   myClaimTicketHref,
   openClaimedTicket,
   readMyClaims,
@@ -153,13 +157,43 @@ function MyClaimRow({
   claim,
   onOpen,
   onRelease,
+  reload,
 }: {
   claim: MyClaim;
   /** 查看: a link to the ticket, which may be taken over to select it in place. */
   onOpen: (event: MouseEvent<HTMLElement>) => void;
   /** 釋出名額: asks first. */
   onRelease: () => void;
+  reload: () => void;
 }) {
+  const progress = useMutation(
+    siteGraphqlMutation(ReportAssignmentProgressDocument),
+  );
+  const stepIndex = assignmentProgress.findIndex(
+    (step) => step.status === claim.status,
+  );
+  const current = assignmentProgress[stepIndex];
+  const next = assignmentProgress.find(
+    (step, index) => step.action && index > stepIndex,
+  );
+
+  function reportProgress() {
+    if (!next) return;
+    progress.mutate(
+      {
+        uuid: claim.assignmentUuid,
+        input: { status: next.status, expectedStatus: claim.status },
+      },
+      {
+        onSuccess: () => {
+          announceTicketChanged(claim.ticketUuid);
+          reload();
+        },
+        onError: reload,
+      },
+    );
+  }
+
   return (
     <Box
       sx={{
@@ -219,10 +253,32 @@ function MyClaimRow({
       {claim.contact ? (
         <DetailLine icon={<Icons.user />}>{claim.contact}</DetailLine>
       ) : null}
+      <Typography
+        sx={{
+          mt: 1,
+          fontSize: displayTextSize[13],
+          color: color.fg.neutral.subtle,
+        }}
+      >
+        現場進度 {current?.label}
+      </Typography>
+      {progress.isError ? (
+        <Callout tone="warning">這次進度未能儲存，請重試。</Callout>
+      ) : null}
       <Stack
         direction="row"
         sx={{ mt: 1.5, gap: 1, flexWrap: 'wrap', alignItems: 'center' }}
       >
+        {next ? (
+          <Button
+            variant="outline"
+            size="sm"
+            loading={progress.isPending}
+            onClick={reportProgress}
+          >
+            {next.action}
+          </Button>
+        ) : null}
         <RowAction
           LinkComponent={Link}
           href={myClaimTicketHref(claim.ticketUuid)}
@@ -403,6 +459,7 @@ export function MyClaimsList({
           claim={claim}
           onOpen={(event) => openTicket(event, claim.ticketUuid)}
           onRelease={() => requestRelease(claim)}
+          reload={reload}
         />
       ))}
       {dialog}

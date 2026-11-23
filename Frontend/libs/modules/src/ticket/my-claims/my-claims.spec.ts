@@ -36,6 +36,7 @@ describe('readMyClaims', () => {
         ticketUuid: 'ticket-1',
         ticketTitle: '光復鄉佛祖街需要清淤',
         needName: '清淤',
+        status: 'accepted',
         claimedAt: '承接於 9/30 14:05',
         address: '花蓮縣光復鄉佛祖街89號 1F',
         contact: '王小姐 · 0912-345-678',

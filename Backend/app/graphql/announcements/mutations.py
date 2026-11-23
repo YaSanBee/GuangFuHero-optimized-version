@@ -9,6 +9,7 @@ from app.graphql.announcements.types import (
     AnnouncementType,
     CreateAnnouncementInput,
     UpdateAnnouncementInput,
+    validate_expiry,
 )
 from app.graphql.context import check_permission
 from app.repositories.announcements_repository import announcement_repository
@@ -30,6 +31,8 @@ class AnnouncementMutation:
             obj_in={
                 "content": input.content,
                 "placement": input.placement.value,
+                "severity": input.severity.value,
+                "expires_at": validate_expiry(input.expires_at),
                 "created_by": actor,
                 "updated_by": actor,
             },
@@ -46,6 +49,11 @@ class AnnouncementMutation:
         announcement.publish, and moving one onto a page replaces what is live there.
         """
         await check_permission(info, Perm.ANN_EDIT)
+        metadata = {}
+        if input.expires_at is not strawberry.UNSET:
+            metadata["expires_at"] = validate_expiry(input.expires_at)
+        if input.severity is not None:
+            metadata["severity"] = input.severity.value
         a = await announcement_repository.edit(
             info.context["db"],
             uuid=uuid,
@@ -53,6 +61,7 @@ class AnnouncementMutation:
             placement=input.placement.value if input.placement is not None else None,
             actor_uuid=str(info.context["user"].uuid),
             check_live=lambda: check_permission(info, Perm.ANN_PUBLISH),
+            metadata=metadata,
         )
         if not a:
             raise ValueError("Announcement not found")

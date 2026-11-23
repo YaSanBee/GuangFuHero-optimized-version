@@ -8,10 +8,31 @@ import { createSiteHref } from '../../route/serialize';
 import type { SiteModule, SiteRouteState } from '../../route/types';
 import { formatTaiwanTime } from '../../time';
 import { formatTicketAddress, type TicketAddressParts } from '../address';
+import { TaskAssignmentStatus } from '@rescue-frontend/data-access';
+
+export const assignmentProgress = [
+  { status: TaskAssignmentStatus.Accepted, label: '已承接', action: '' },
+  { status: TaskAssignmentStatus.EnRoute, label: '前往中', action: '' },
+  { status: TaskAssignmentStatus.OnSite, label: '已到場', action: '回報到場' },
+  {
+    status: TaskAssignmentStatus.InProgress,
+    label: '作業中',
+    action: '開始作業',
+  },
+  {
+    status: TaskAssignmentStatus.Completed,
+    label: '已完工',
+    action: '回報完工',
+  },
+];
 
 /** One row of `myTaskAssignments`, as `MyTaskAssignments` in `tickets.graphql` reads it. */
 export interface MyTaskAssignmentRow {
-  assignment: { uuid: string; assignedAt?: string | null };
+  assignment: {
+    uuid: string;
+    assignedAt?: string | null;
+    status?: string | null;
+  };
   task: { uuid: string; taskName: string; recruitingStoppedAt?: string | null };
   ticket: {
     uuid: string;
@@ -28,6 +49,7 @@ export interface MyClaim {
   ticketUuid: string;
   ticketTitle: string;
   needName: string;
+  status: TaskAssignmentStatus;
   /** 「承接於 9/30 14:05」, or null for a claim with no time on it. */
   claimedAt: string | null;
   address: string | null;
@@ -61,6 +83,9 @@ export function readMyClaims(rows: readonly MyTaskAssignmentRow[]): MyClaim[] {
     ticketUuid: ticket.uuid,
     ticketTitle: ticket.title,
     needName: task.taskName,
+    status:
+      assignmentProgress.find((step) => step.status === assignment.status)
+        ?.status ?? TaskAssignmentStatus.Accepted,
     claimedAt: formatClaimedAt(assignment.assignedAt),
     address: formatTicketAddress(ticket.secondaryLocation),
     contact: formatContact(ticket.contactName, ticket.contactPhone),

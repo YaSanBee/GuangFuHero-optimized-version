@@ -62,6 +62,94 @@ async def test_a_citizen_files_a_help_request_through_graphql(client, redis):
 
 
 @pytest.mark.asyncio
+async def test_request_claim_field_progress_and_public_share(client, redis, coordinator_auth):
+    """A resident, a volunteer, a coordinator, and a guest see their respective parts of one ticket."""
+    _, resident = await _create_user_with_role(redis, "Login User")
+    _, volunteer = await _create_user_with_role(redis, "Login User")
+    _, coordinator = coordinator_auth
+
+    async def gql(query, variables, token=None):
+        headers = auth_header(token) if token else {}
+        body = (
+            await client.post("/graphql", json={"query": query, "variables": variables}, headers=headers)
+        ).json()
+        assert "errors" not in body, body
+        return body["data"]
+
+    create = """
+        mutation($input: CreateHelpRequestInput!) {
+          createHelpRequest(input: $input) { ... on TicketCreated { ticket { uuid title } tasks { uuid } } }
+        }
+    """
+    created = (
+        await gql(
+            create,
+            {
+                "input": _input(
+                    tasks=[
+                        {
+                            "taskType": "hr",
+                            "taskName": "清淤人力",
+                            "quantity": 1,
+                        }
+                    ]
+                )
+            },
+            resident,
+        )
+    )["createHelpRequest"]
+    task_uuid = created["tasks"][0]["uuid"]
+    claim = "mutation($task: UUID!) { assignTaskActor(taskUuid: $task) { uuid status } }"
+    assignment = (await gql(claim, {"task": task_uuid}, volunteer))["assignTaskActor"]
+    assert assignment["status"] == "accepted"
+
+    read_task = """
+        query($uuid: String!) {
+          ticketTasks(ticketUuid: $uuid) { status assignedCount onSiteCount workingCount completedCount }
+        }
+    """
+    ticket_vars = {"uuid": created["ticket"]["uuid"]}
+    filled = (await gql(read_task, ticket_vars, coordinator))["ticketTasks"][0]
+    assert filled == {
+        "status": "fulfilled",
+        "assignedCount": 1,
+        "onSiteCount": 0,
+        "workingCount": 0,
+        "completedCount": 0,
+    }
+
+    report = """
+        mutation($uuid: UUID!, $input: UpdateTaskAssignmentInput!) {
+          updateTaskAssignment(uuid: $uuid, input: $input) { status }
+        }
+    """
+    for previous, status, count in (
+        ("accepted", "on_site", "onSiteCount"),
+        ("on_site", "in_progress", "workingCount"),
+        ("in_progress", "completed", "completedCount"),
+    ):
+        updated = await gql(
+            report,
+            {
+                "uuid": assignment["uuid"],
+                "input": {
+                    "status": status,
+                    "expectedStatus": previous,
+                },
+            },
+            volunteer,
+        )
+        assert updated["updateTaskAssignment"]["status"] == status
+        counts = (await gql(read_task, ticket_vars, coordinator))["ticketTasks"][0]
+        assert counts["status"] == "fulfilled"
+        assert counts[count] == 1
+
+    public = await gql("query($uuid: UUID!) { ticket(uuid: $uuid) { uuid title contactPhone } }", ticket_vars)
+    assert public["ticket"]["title"] == created["ticket"]["title"]
+    assert public["ticket"]["contactPhone"] == "09*****678"
+
+
+@pytest.mark.asyncio
 async def test_a_guest_cannot_file_a_help_request(client):
     """Sign-in first: the site shows a guest why before any form."""
     res = await client.post("/graphql", json={"query": FILE, "variables": {"input": _input()}})

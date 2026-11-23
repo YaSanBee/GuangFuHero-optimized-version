@@ -5,6 +5,7 @@ to the UUIDs each test creates. Each publish replaces what is live on its pages,
 announcements included; tests/test_announcements_repository.py covers the transitions in full.
 """
 
+from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
 import pytest
@@ -86,6 +87,42 @@ async def _create(client, token, content):
     body = await _post(client, CREATE, {"content": content}, token)
     assert "errors" not in body, body
     return await _publish(client, token, body["data"]["createAnnouncement"]["uuid"])
+
+
+@pytest.mark.asyncio
+async def test_expired_emergency_announcement_is_hidden_but_kept_in_history(client, content_admin_auth):
+    """Expired banners disappear from public reads and remain in the management list."""
+    _, token = content_admin_auth
+    create = """
+        mutation($input: CreateAnnouncementInput!) {
+          createAnnouncement(input: $input) { uuid severity expiresAt }
+        }
+    """
+    expires = datetime.now(UTC) + timedelta(hours=1)
+    variables = {"input": {"content": "測試警報", "severity": "emergency", "expiresAt": expires.isoformat()}}
+    created = await _post(client, create, variables, token)
+    assert "errors" not in created, created
+    draft = created["data"]["createAnnouncement"]
+    assert draft["severity"] == "emergency"
+    assert datetime.fromisoformat(draft["expiresAt"]) == expires
+    uuid = draft["uuid"]
+    await _publish(client, token, uuid)
+    assert {"uuid": uuid} in (await _post(client, LIST_DEFAULT, {}))["data"]["announcements"]
+
+    async with _test_db() as db:
+        await db.execute(
+            update(Announcement)
+            .where(Announcement.uuid == uuid)
+            .values(expires_at=datetime.now(UTC) - timedelta(seconds=1))
+        )
+        await db.commit()
+
+    assert {"uuid": uuid} not in (await _post(client, LIST_DEFAULT, {}))["data"]["announcements"]
+    assert "errors" in await _post(client, GET_ONE, {"uuid": uuid})
+    history = await _post(client, LIST, {"filter": "ALL"}, token)
+    assert next(row for row in history["data"]["announcements"] if row["uuid"] == uuid)["active"] is False
+    refused = await _post(client, SET_ACTIVE, {"uuid": uuid, "active": True}, token)
+    assert "expiry must be in the future" in refused["errors"][0]["message"]
 
 
 @pytest.mark.asyncio

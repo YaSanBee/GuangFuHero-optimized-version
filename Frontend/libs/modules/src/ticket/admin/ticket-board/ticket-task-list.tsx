@@ -64,6 +64,8 @@ type DetailAssignment = DetailTask['assignments'][number];
 const ASSIGNMENT_LABELS: Record<string, string> = {
   accepted: '已接單',
   en_route: '前往中',
+  on_site: '已到場',
+  in_progress: '作業中',
   completed: '已完成',
 };
 

@@ -176,7 +176,7 @@ async def assign_zone_to_team(
     await require_scope(actor, Perm.ZONE_ASSIGN, db)
     await _require_gov_zone_authority(db, actor)
 
-    if not await team_zone_repository.get_by_uuid_active(db, zone_uuid):
+    if not await team_zone_repository.get_by_uuid_active(db, zone_uuid, for_update=True):
         raise ValueError("Team zone not found")
 
     team = await db.scalar(select(Team).where(Team.uuid == team_uuid, Team.delete_at.is_(None)))
@@ -237,6 +237,9 @@ async def remove_zone_from_team(db: AsyncSession, *, actor: User, zone_uuid: str
     await _require_gov_zone_authority(db, actor)
     actor_uid = actor.uuid
 
+    # Serialize changes to this zone so concurrent removals cannot both see two teams.
+    if not await team_zone_repository.get_by_uuid_active(db, zone_uuid, for_update=True):
+        raise ValueError("Team zone not found")
     existing = await team_zone_assign_repository.get_assignment(db, team_uuid=team_uuid, zone_uuid=zone_uuid)
     if existing is None:
         raise ValueError("This team is not assigned to this team zone")

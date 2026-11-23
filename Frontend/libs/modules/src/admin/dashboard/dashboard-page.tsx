@@ -536,6 +536,7 @@ export function DashboardPage() {
   >({ tickets: {}, stations: {} });
   // Restamps 更新於, as a change in the filter card does: the section's numbers are asked again.
   const setSection = (domain: DashboardDomain) => (next: SectionFilter) => {
+    performance.mark('dashboard:filters-applied');
     setSections((current) => ({ ...current, [domain]: next }));
     setSyncedAt(stamp());
   };
@@ -566,6 +567,7 @@ export function DashboardPage() {
     setFilters(next);
     const nextApplied = applyFilterChange(applied, next);
     if (!sameFilters(nextApplied, applied)) {
+      performance.mark('dashboard:filters-applied');
       setApplied(nextApplied);
       setSyncedAt(stamp());
     }

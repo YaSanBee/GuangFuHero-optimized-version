@@ -82,6 +82,12 @@ enum AnnouncementPlacement {
   all
 }
 
+enum AnnouncementSeverity {
+  general
+  important
+  emergency
+}
+
 enum AnnouncementStatus {
   DRAFT
   ACTIVE
@@ -95,6 +101,8 @@ type AnnouncementType {
 
   """admin_page, public_page, or all (both pages)"""
   placement: String!
+  severity: AnnouncementSeverity!
+  expiresAt: DateTime
   status: AnnouncementStatus!
 
   """When it last went live; null while a draft"""
@@ -304,6 +312,8 @@ input CreateAnnouncementInput {
 
   """Which page shows it; defaults to both"""
   placement: AnnouncementPlacement! = all
+  severity: AnnouncementSeverity! = important
+  expiresAt: DateTime = null
 }
 
 input CreateAreaInput {
@@ -1719,6 +1729,8 @@ input SuggestionDecisionInput {
 enum TaskAssignmentStatus {
   accepted
   en_route
+  on_site
+  in_progress
   completed
 }
 
@@ -2119,6 +2131,8 @@ type TicketTaskType {
   myAssignment: TaskAssignmentType
   assignedCount: Int!
   completedCount: Int!
+  onSiteCount: Int!
+  workingCount: Int!
   progress: Float
 }
 
@@ -2330,6 +2344,8 @@ input UpdateAnnouncementInput {
 
   """Which page shows it; omit to keep the current placement"""
   placement: AnnouncementPlacement = null
+  severity: AnnouncementSeverity = null
+  expiresAt: DateTime
 }
 
 input UpdateAreaInput {
@@ -2411,6 +2427,9 @@ input UpdateStationPropertyInput {
 input UpdateTaskAssignmentInput {
   """New work-completion state"""
   status: TaskAssignmentStatus = null
+
+  """Reject a progress update if another report already changed the status"""
+  expectedStatus: TaskAssignmentStatus = null
 
   """Updated role, e.g. 'lead' or 'support' — pass null to clear"""
   role: String

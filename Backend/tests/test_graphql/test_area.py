@@ -5,6 +5,7 @@ the team-zone-needs-a-team rule, the mark zone's visibility switch and viewport,
 promotion, and assign/remove.
 """
 
+import asyncio
 import uuid as uuid_mod
 from datetime import UTC, datetime
 
@@ -401,6 +402,37 @@ async def test_remove_zone_from_team_keeps_the_last_team(client, redis, team_uui
             .all()
         )
         assert [str(t) for t in remaining] == [team_uuid]
+
+
+@pytest.mark.asyncio
+async def test_concurrent_removals_leave_one_team(client, redis, team_uuid):
+    """Two requests removing different teams cannot empty an active responsibility zone."""
+    gov_token = await _make_gov_user(redis)
+    second_team_uuid = await _new_team()
+    created = await _create(client, gov_token, _zone_input("Concurrent zone", team_uuid))
+    zone_uuid = created["data"]["createArea"]["uuid"]
+
+    async def change(query: str, team: str) -> dict:
+        response = await client.post(
+            "/graphql",
+            json={"query": query, "variables": {"input": {"zoneUuid": zone_uuid, "teamUuid": team}}},
+            headers=auth_header(gov_token),
+        )
+        return response.json()
+
+    assigned = await change(ASSIGN_ZONE, second_team_uuid)
+    assert "errors" not in assigned, assigned
+    results = await asyncio.gather(change(REMOVE_ZONE, team_uuid), change(REMOVE_ZONE, second_team_uuid))
+    successful = [result for result in results if (result.get("data") or {}).get("removeZoneFromTeam")]
+    assert len(successful) == 1
+    failure = next(result for result in results if "errors" in result)
+    assert "A team zone needs at least one team" in _errors(failure)
+
+    async with test_db() as db:
+        remaining = await db.scalars(
+            select(TeamZoneAssign.team_uuid).where(TeamZoneAssign.zone_uuid == zone_uuid)
+        )
+        assert len(remaining.all()) == 1
 
 
 @pytest.mark.asyncio

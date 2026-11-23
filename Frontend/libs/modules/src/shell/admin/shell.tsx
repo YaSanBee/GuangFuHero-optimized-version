@@ -2,7 +2,6 @@
 
 import { Box, Drawer, useMediaQuery, useTheme } from '@mui/material';
 import {
-  useEffect,
   useState,
   useSyncExternalStore,
   type ReactNode,
@@ -18,6 +17,7 @@ import {
 } from '@rescue-frontend/data-access/admin';
 import { AnnouncementBanner, designTokens } from '@rescue-frontend/ui';
 
+import { useUnexpiredAnnouncements } from '../../announcement/use-unexpired-announcements';
 import { AdminHeader } from './header';
 import { AdminErrorPage } from './error-page';
 import { useActiveAdminNavItem } from './nav';
@@ -76,6 +76,7 @@ export function AdminShell({
     { filter: AnnouncementFilter.Active },
     { enabled: canViewAnnouncements },
   );
+  const announcements = useUnexpiredAnnouncements(data?.announcements);
 
   // Widening past the breakpoint closes the drawer, so it does not reopen on the next narrowing.
   if (!mobile && openedOn !== null) setOpenedOn(null);
@@ -90,7 +91,7 @@ export function AdminShell({
       }}
     >
       {canViewAnnouncements &&
-        data?.announcements.map((announcement) => (
+        announcements.map((announcement) => (
           <AnnouncementBanner key={announcement.uuid}>
             {announcement.content}
           </AnnouncementBanner>

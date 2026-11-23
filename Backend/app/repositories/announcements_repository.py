@@ -4,7 +4,7 @@ from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select, text
+from sqlalchemy import and_, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.permissions import Perm
@@ -45,11 +45,15 @@ class AnnouncementRepository(GenericRepository[Announcement]):
         query = select(self.model).where(self.model.delete_at.is_(None))
         if placement != "all":
             query = query.where(self.model.placement.in_((placement, "all")))
+        live = and_(
+            self.model.active.is_(True),
+            or_(self.model.expires_at.is_(None), self.model.expires_at > func.now()),
+        )
         if status == "active":
-            query = query.where(self.model.active.is_(True))
+            query = query.where(live)
         elif status == "draft":
             query = query.where(self.model.published_at.is_(None))
-        query = query.order_by(self.model.active.desc(), self.model.created_at.desc())
+        query = query.order_by(live.desc(), self.model.created_at.desc())
         result = await db.execute(query)
         return result.scalars().all()
 
@@ -106,7 +110,7 @@ class AnnouncementRepository(GenericRepository[Announcement]):
             title=title,
             body=body,
             params={"placement": ann.placement},
-            priority="medium",
+            priority={"general": "low", "important": "medium", "emergency": "urgent"}[ann.severity],
             ref_type="announcement",
             ref_uuid=ann.uuid,
             explicit_recipients=[r for r in recipients if str(r) != str(actor_uuid)],
@@ -132,10 +136,13 @@ class AnnouncementRepository(GenericRepository[Announcement]):
         target, live = await self._lock_target(db, uuid)
         if target is None:
             return None
+        now = datetime.now(UTC)
+        if active and target.expires_at is not None and target.expires_at <= now:
+            raise ValueError("Announcement expiry must be in the future to publish")
         if active and not target.active:
             await self._take_down_overlapping(db, live, target, target.placement, actor_uuid)
             target.active = True
-            target.published_at = datetime.now(UTC)
+            target.published_at = now
             target.published_by = target.updated_by = actor_uuid
             await db.commit()
             await db.refresh(target)
@@ -159,6 +166,7 @@ class AnnouncementRepository(GenericRepository[Announcement]):
         placement: str | None,
         actor_uuid: Any,
         check_live: Callable[[], Awaitable[object]],
+        metadata: dict | None = None,
     ) -> Announcement | None:
         """Change an announcement's content and, unless None, its placement.
 
@@ -171,10 +179,15 @@ class AnnouncementRepository(GenericRepository[Announcement]):
         target, live = await self._lock_target(db, uuid)
         if target is None:
             return None
-        if target.active:
+        if target.is_live:
             await check_live()
             if placement is not None:
                 await self._take_down_overlapping(db, live, target, placement, actor_uuid)
+        elif target.active:
+            # An edit to an expired announcement must not bring it live again.
+            target.active = False
+        for field, value in (metadata or {}).items():
+            setattr(target, field, value)
         target.content = content
         if placement is not None:
             target.placement = placement

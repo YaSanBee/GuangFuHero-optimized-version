@@ -27,6 +27,7 @@ dependencies = [
     "pyrate-limiter>=4.1.0",
     "openpyxl>=3.1.5",
     "plotly>=7.1,<7.2",  # bundles the frontend's plotly.js, so the two move together
+    "tzdata>=2026.6 ; sys_platform == 'win32'",
 ]
 
 [dependency-groups]
